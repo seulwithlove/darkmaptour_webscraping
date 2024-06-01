@@ -6,7 +6,7 @@ import signal
 import time
 
 from time import sleep
-from icecream import ic
+# from icecream import ic       # 디버깅용 - print 대신 사용
 from tqdm.notebook import tqdm 
 from bs4 import BeautifulSoup
 from typing import Callable
@@ -147,11 +147,12 @@ def set_alarm(duration: int):
     signal.signal(signal.SIGALRM, timeout_handler)
     signal.alarm(duration)
 
-
+# 한국경제 본문을 찾아서 스크래핑
 def get_text_hk(soup: BeautifulSoup) -> str:
-    article_body = soup.find_all("div", class_="article-body")
+    # div class="article-body"에 본문이 있음
+    article_body = soup.find_all("div", class_="article-body") 
     if len(article_body) != 0:
-        return article_body[0].get_text().strip()
+        return article_body[0].get_text().strip() # 본문을 가져와서 str 변환 + 공백제거
     else:
         return ""
 

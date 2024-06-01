@@ -1,7 +1,6 @@
 import pickle
 import logging
 import os
-import datetime
 import shutil
 import joblib
 import json
@@ -28,7 +27,7 @@ def generate_file_path(name: str) -> str:
     Returns:
     - str: The generated file path.
     """
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     file_name = f"{name}_{timestamp}.pkl"
     return os.path.join('save', file_name)
 
@@ -39,7 +38,7 @@ def rename_existing_file(file_path: str) -> None:
     Parameters:
     - file_path: The path of the existing file.
     """
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     new_name = f"{os.path.splitext(os.path.basename(file_path))[0]}_{timestamp}.pkl"
     new_file_path = os.path.join('save', new_name)
     os.rename(file_path, new_file_path)

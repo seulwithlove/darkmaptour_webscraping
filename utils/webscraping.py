@@ -2,11 +2,14 @@ import pandas as pd
 import numpy as np
 import math
 import re
+import signal
+import time
 
 from time import sleep
 from icecream import ic
 from tqdm.notebook import tqdm 
 from bs4 import BeautifulSoup
+from typing import Callable
 
 from selenium import webdriver 
 from selenium.webdriver.common.action_chains import ActionChains 
@@ -43,13 +46,14 @@ class ArticleScraper:
             return ""
 
 
-    def get_article_text(self, html:str) -> str:
+    def get_article_text(
+        self,
+        html:str,
+        get_text_html_func: Callable[[BeautifulSoup], str]
+    ) -> str:
         soup = BeautifulSoup(html, 'html.parser')
-        article_body = soup.find_all("div", class_="article-body")
-        if len(article_body) != 0:
-            return article_body[0].get_text()
-        else:
-            return ""
+        text = get_text_html_func(soup)
+        return text
 
 
     def save_to_markdown(self, content, file_path):
@@ -73,22 +77,22 @@ class ArticleScraper:
         driver = webdriver.Chrome()
         self.make_dataframe_url()
         new_column_name = 'selenium_html'
-        # df = self.df.copy()
-        self.df.loc[:, new_column_name] = ''
+        self.df_work = self.df.copy()
+        self.df_work[new_column_name] = ''
         for index in tqdm(self.index_url):
-            url = self.df.loc[index, "URL"]
+            url = self.df_work.loc[index, "URL"]
             try:
-                set_alarm(10)
+                set_alarm(10)   # set alarm - 10 sec.
                 # print("Before: %s" % time.strftime("%M:%S"))
                 result = self.get_html_selenium(url=url, driver=driver)
-            except Exception as ex:
-                print(ex)
+            except TimeoutException as e:
+                # print(e)
                 result = 'timeout'
             finally:
-                signal.alarm(0)
+                signal.alarm(0)   # reset alarm
                 # print("After: %s" % time.strftime("%M:%S"))
-            self.df.at[int(index), new_column_name] = str(result)
-        # self.df = df.copy()
+            self.df_work.at[int(index), new_column_name] = str(result)
+        self.df = self.df_work.copy()
         driver.close()
         driver.quit()
 
@@ -98,21 +102,27 @@ class ArticleScraper:
         self.index_html = self.df_html.index
 
 
-    def make_content_from_html(self):
+    def make_content_from_html(
+        self,
+        get_text_html_func: Callable[[BeautifulSoup], str]):
         self.make_dataframe_html()
+        self.df_work = self.df.copy()
         new_column_name = 'content'
-        df = self.df.copy()
-        df.loc[:, new_column_name] = ''
+        # self.df = self.df.assign(new_column_name='')
+        self.df_work[new_column_name] = ''
         for index in tqdm(self.index_html):
-            result = self.get_article_text(html=df.loc[index, "selenium_html"])
-            df.loc[int(index), new_column_name] = str(result)
-        self.df = df.copy()
+            result = self.get_article_text(
+                html=self.df_work.loc[index, "selenium_html"],
+                get_text_html_func=get_text_html_func
+            )
+            self.df_work.at[int(index), new_column_name] = str(result)
+        self.df = self.df_work.copy()
 
 
     def save_dataframe(self, file_name:str, file_path='./'):
         # now_time = get_current_time()
         self.df.to_parquet(
-            f'{file_path}/{file_name}.gzip',
+            f'{file_path}/{file_name}.parquet.gzip',
             compression='gzip')
 
 
@@ -126,14 +136,24 @@ class ArticleScraper:
 # OTHER FUNCTIONS
 # ----------------------------------------------------------------
 
+class TimeoutException(Exception):
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
+
 def timeout_handler(num, stack):
-    # print("Received SIGALRM")
-    raise Exception("TIMEOVER")
+    raise TimeoutException("Time limit exceeded")
 
 def set_alarm(duration: int):
     signal.signal(signal.SIGALRM, timeout_handler)
     signal.alarm(duration)
 
+
+def get_text_hk(soup: BeautifulSoup) -> str:
+    article_body = soup.find_all("div", class_="article-body")
+    if len(article_body) != 0:
+        return article_body[0].get_text().strip()
+    else:
+        return ""
 
 
 

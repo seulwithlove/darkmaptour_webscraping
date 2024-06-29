@@ -15,7 +15,10 @@ from selenium import webdriver
 from selenium.webdriver.common.action_chains import ActionChains 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import InvalidArgumentException, WebDriverException
+
 
 from utils.custom_utils import load_var, save_var
 
@@ -26,15 +29,47 @@ class ArticleScraper:
         self.df = df
         
     
+    def open_webdriver(self):
+        options = webdriver.ChromeOptions()
+        options.page_load_strategy = 'none'
+        # options.add_argument('headless')
+        # options.add_argument('window-size=640x480')
+        # options.add_argument("disable-gpu")
+        options.add_argument("--window-size=320,240")
+        # options.add_argument('--headless')
+        # options.add_argument('--log-level=3')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-infobars')
+        options.add_argument('--blink-settings=imagesEnabled=false') #브라우저에서 이미지 로딩을 하지 않습니다.
+        options.add_argument('--mute-audio') #브라우저에 음소거 옵션을 적용합니다.
+        options.add_argument('incognito') #시크릿 모드의 브라우저가 실행됩니다.
+        # 알림창 끄기
+        options.add_experimental_option("prefs", {
+            "profile.default_content_setting_values.notifications": 1
+        })
+        self.webdriver = webdriver.Chrome(options=options)
+        self.wait = WebDriverWait(self.webdriver, 30)
+
+
+    def close_webdriver(self):
+        self.webdriver.close()
+        self.webdriver.quit()
+        
+
     def get_html_selenium(
         self,
-        url: str,
-        driver: webdriver.chrome.webdriver.WebDriver
+        url: str
+        # webdriver: webdriver.chrome.webdriver.WebDriver,
+        # wait: WebDriverWait
     ) -> str:
         try:
-            driver.get(url=url)
-            body = driver.find_element(by=By.TAG_NAME, value="body")
-            html = body.get_attribute('outerHTML')
+            # self.open_webdriver()
+            self.webdriver.get(url)
+            element = self.wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            html = self.webdriver.page_source
+            self.webdriver.execute_script("window.stop();")
+            # body = driver.find_element(by=By.TAG_NAME, value="body")
+            # html = body.get_attribute('outerHTML')
             return html
         
         except InvalidArgumentException as e:
@@ -45,6 +80,39 @@ class ArticleScraper:
             print(f"WebDriverException: {e}")
             return ""
 
+        finally:
+            # self.close_webdriver()
+            pass
+            
+
+    def get_html_selenium_window(
+        self,
+        url: str
+        # webdriver: webdriver.chrome.webdriver.WebDriver,
+        # wait: WebDriverWait
+    ) -> str:
+        try:
+            self.open_webdriver()
+            self.webdriver.get(url)
+            element = self.wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            html = self.webdriver.page_source
+            self.webdriver.execute_script("window.stop();")
+            # body = driver.find_element(by=By.TAG_NAME, value="body")
+            # html = body.get_attribute('outerHTML')
+            return html
+        
+        except InvalidArgumentException as e:
+            print(f"Invalid argument exception: {e}")
+            return ""
+    
+        except WebDriverException as e:
+            print(f"WebDriverException: {e}")
+            return ""
+
+        finally:
+            self.close_webdriver()
+            pass
+    
 
     def get_article_text(
         self,
@@ -74,7 +142,35 @@ class ArticleScraper:
 
 
     def scrape_by_selenium(self):
-        driver = webdriver.Chrome()
+        self.make_dataframe_url()
+        new_column_name = 'selenium_html'
+        self.df_work = self.df.copy()
+        self.df_work[new_column_name] = ''
+        self.open_webdriver()
+        for index in tqdm(self.index_url):
+            url = self.df_work.loc[index, "URL"]
+            try:
+                # set_alarm(10)   # set alarm - 10 sec.
+                # print("Before: %s" % time.strftime("%M:%S"))
+                result = self.get_html_selenium(
+                    url=url
+                    # webdriver=self.webdriver,
+                    # wait=self.wait
+                )
+            except TimeoutException as e:
+                # print(e)
+                result = 'timeout'
+                
+            finally:
+                pass
+                # signal.alarm(0)   # reset alarm
+                # print("After: %s" % time.strftime("%M:%S"))
+                
+            self.df_work.at[int(index), new_column_name] = str(result)
+        self.df = self.df_work.copy()
+        self.close_webdriver()
+
+    def scrape_by_selenium_window(self):
         self.make_dataframe_url()
         new_column_name = 'selenium_html'
         self.df_work = self.df.copy()
@@ -82,21 +178,20 @@ class ArticleScraper:
         for index in tqdm(self.index_url):
             url = self.df_work.loc[index, "URL"]
             try:
-                set_alarm(10)   # set alarm - 10 sec.
-                # print("Before: %s" % time.strftime("%M:%S"))
-                result = self.get_html_selenium(url=url, driver=driver)
+                result = self.get_html_selenium_window(
+                    url=url
+                )
             except TimeoutException as e:
                 # print(e)
                 result = 'timeout'
+                
             finally:
-                signal.alarm(0)   # reset alarm
-                # print("After: %s" % time.strftime("%M:%S"))
+                pass
+                
             self.df_work.at[int(index), new_column_name] = str(result)
         self.df = self.df_work.copy()
-        driver.close()
-        driver.quit()
 
-
+    
     def make_dataframe_html(self):
         self.df_html = self.df[self.df['selenium_html'].notna() & (self.df['selenium_html'] != "")]
         self.index_html = self.df_html.index
